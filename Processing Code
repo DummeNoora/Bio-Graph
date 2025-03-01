@@ -1,0 +1,275 @@
+import java.io.FileWriter;
+import java.io.*;
+import oscP5.*;
+import netP5.*;
+
+OscP5 oscP5;
+NetAddress myRemoteLocation;
+FileWriter fw;
+BufferedWriter bw;
+int Y_AXIS = 1;
+int X_AXIS = 2;
+int yspacing = 2;   // How far apart should each vertical location be spaced
+int w;
+int x = 0;// Width of entire wave
+int q = 0;
+int maxwaves = 10;// total # of waves to add together
+boolean runOnce = false;
+boolean savedOnce = false;
+boolean colorflag = false;
+
+
+float IR;
+int finger;
+int chairColor;
+int incomeIndex;
+int newAmp = 100;
+
+int threshhold = 30;
+int counter = 0;
+int timer = 0;
+
+String testSave;
+
+int num = 0;
+float prevxval, prevspace = 0;
+float theta = 0.0;
+float[] amplitude = new float[maxwaves];   // Height of wave
+float[] dy = new float[maxwaves];          // Value for incrementing Y, to be calculated as a function of period and yspacing
+float[] xvalues;    // Using an array to store height values for the wave (not entirely necessary)
+float period;
+
+color end = color(random(255), random(255), random(255));
+color begin = color(random(255), chairColor, random(255));
+
+void setup() {
+  fullScreen();
+  background(255);
+  frameRate(30);
+  colorMode(RGB, 255, 255, 255, 100);
+  w = height + 16;
+  oscP5 = new OscP5(this, 54445);
+
+  for (int i = 0; i < maxwaves; i++) {
+    amplitude[i] = random(10, 30);
+    period = random(100, 300); // How many pixels before the wave repeats
+    dy[i] = (TWO_PI / period) * yspacing;
+  }
+
+  xvalues = new float[w/yspacing];
+  calcWave();
+}
+
+void draw() {
+  if (finger == 1) {
+    if (colorflag == true) background(255);
+    colorflag = false;
+    if (runOnce == false) {
+      firstWave();
+    } else {
+      if (colorflag == false) background(255);
+      colorflag = true;
+      calcWave();
+      renderWave();
+      calcWave();
+      renderWave();
+      if (savedOnce == false) saveNew();
+      counter = 0;
+    }
+  } else {
+      if (runOnce == true) recalc();
+    loadImage();
+    runOnce = false;
+    colorflag = true;
+    q = 1;
+  }
+}
+
+
+/* for (int x = 0; x < xvalues.length; x++) {
+ if (x == 0) num = 0;
+ else num = 1;
+ score = (millis()-timer)/10;
+ if (score > 10) {
+ stroke(0);
+ line(width/2+xvalues[x], x*yspacing, width/2+xvalues[x-num], x*yspacing-prevspace);
+ prevspace = yspacing;
+ prevxval = (height/2+xvalues[x])-(height/2+xvalues[x-num]);
+ timer = millis();
+ }
+ }
+ }*/
+
+
+
+void calcWave() {
+  // Increment theta (try different values for 'angular velocity' here
+  theta += 0.03;
+
+  // Set all height values to zero
+  for (int i = 0; i < xvalues.length; i++) {
+    xvalues[i] = 0;
+  }
+
+  // Accumulate wave height values
+  for (int j = 0; j < maxwaves; j++) {
+    float x = theta;
+    for (int i = 0; i < xvalues.length; i++) {
+      // Every other wave is cosine instead of sine
+      if (j % 2 == 0)  xvalues[i] += sin(x)*amplitude[j];
+      else xvalues[i] += cos(x)*amplitude[j];
+      x+=dy[j];
+      //println(i, j, xvalues[100], sin(x)*amplitude[j]);
+    }
+  }
+}
+
+void recalc() {
+  for (int i = 0; i < maxwaves; i++) {
+    amplitude[i] = random(10, 30);
+    period = random(100, 300); // How many pixels before the wave repeats
+    dy[i] = (TWO_PI / period) * yspacing;
+  }
+  end = color(random(255), random(255), random(255));
+  begin = color(random(255), chairColor, random(255));
+  savedOnce = false;
+  calcWave();
+}
+
+
+void firstWave() {
+   stroke(0);
+  if (q == 0) num = 0;
+  else num = 1;
+  line(width/2+xvalues[q], q*yspacing, width/2+xvalues[q-num], q*yspacing-prevspace);
+  prevspace = yspacing;
+  prevxval = (height/2+xvalues[q])-(height/2+xvalues[q-num]);
+  delay(5);
+  q++;
+  if (q > xvalues.length-1) {
+    q = 0;
+    runOnce = true;
+  }
+}
+
+void renderWave() {
+  // A simple way to draw the wave with an ellipse at each location
+
+  for (int x = 0; x < xvalues.length; x++) {
+    if (x == 0) num = 0;
+    else num = 1;
+
+    setGradient(width/2+xvalues[x], x*yspacing, width-(width/2+xvalues[x]), 1, begin, end, X_AXIS);
+    setGradient(0, x*yspacing, width/2+xvalues[x], 1, end, begin, X_AXIS);
+    stroke(255);
+    line(width/2+xvalues[x], x*yspacing, width/2+xvalues[x-num], x*yspacing-prevspace);
+
+    prevspace = yspacing;
+    prevxval = (height/2+xvalues[x])-(height/2+xvalues[x-num]);
+  }
+}
+
+
+void setGradient(float x, float y, float w, float h, color c1, color c2, int axis ) {
+
+  noFill();
+
+  if (axis == Y_AXIS) {  // Top to bottom gradient
+    int count = (int)y;
+    for (int i = count; i <= count+h; i++) {
+      float inter = map(i, y, y+h, 0, 1);
+      color c = lerpColor(c1, c2, inter);
+      stroke(c);
+      line(x, i, x+w, i);
+    }
+  } else if (axis == X_AXIS) {  // Left to right gradient
+    int count = (int)x;
+    for (int i = count; i <= count+w; i++) {
+      float inter = map(i, x, x+w, 0, 1);
+      color c = lerpColor(c1, c2, inter);
+      stroke(c);
+      line(i, y, i, y+h);
+    }
+  }
+}
+
+
+void loadImage() {
+  String[] lines = loadStrings("Names.txt");
+  PImage[] slide = new PImage[lines.length];
+  println("there are " + lines.length + " lines");
+  for (int i = 0; i < lines.length; i++) {
+    slide[i] = loadImage(lines[i]);
+  }
+  if (runOnce == true) timer = lines.length-1;
+  counter++;
+  image(slide[timer], 0, 0);
+  println(lines[timer]);
+  if (counter == threshhold) {
+    timer++;
+    counter = 0;
+    if (timer == lines.length) {
+      timer = 0;
+    }
+  }
+}
+
+void saveNew() {
+  String month = str(month());
+  String day = str(day());
+  String hour = str(hour());
+  String minute = str(minute());
+  String second = str(second());
+  String format = ".png";
+  String dot = ".";
+  testSave = month+dot+day+dot+hour+dot+minute+dot+second+format;
+
+  save(testSave);
+  saveFileName(testSave);
+  savedOnce = true;
+}
+
+
+void saveFileName(String fileName) { // Press a key to save the data
+
+  try {
+    File file =new File("C:/Users/Noah 12/Documents/Processing/Bio_graf_testing_ground_fullscreen/Names.txt");
+    //chemin = dataPath;
+    // positions.txt== your file;
+
+    if (!file.exists()) {
+      file.createNewFile();
+      println(" file doesnt exist, creating a new one");
+    } else {
+      println("file does exist");
+    }
+
+    FileWriter fw = new FileWriter(file, true);///true = append
+    BufferedWriter bw = new BufferedWriter(fw);
+    PrintWriter pw = new PrintWriter(bw);
+
+    pw.write("\n"+fileName);
+    pw.close();
+  }
+  catch(IOException ioe) {
+    System.out.println("Exception ");
+    ioe.printStackTrace();
+  }
+}
+
+void oscEvent(OscMessage theOscMessage) {
+  /* check if theOscMessage has the address pattern we are looking for. */
+
+  if (theOscMessage.checkAddrPattern("/IR")==true) {
+    /* check if the typetag is the right one. */
+    if (theOscMessage.checkTypetag("fii")) {
+      /* parse theOscMessage and extract the values from the osc message arguments. */
+      IR = theOscMessage.get(0).floatValue();
+      finger = theOscMessage.get(1).intValue();
+      chairColor = theOscMessage.get(2).intValue();
+
+
+      return;
+    }
+  }
+}
